@@ -9,6 +9,7 @@ from typing import List, Optional
 from .database import init_db, get_db_connection
 from .seed import seed_db
 from .crud import db_get_tasks, db_get_task_by_id, db_get_stats, db_create_task, db_update_task, db_delete_task, db_reset_tasks, db_get_detailed_stats
+from .supabase_client import supabase
 
 # Auth integration imports
 from .auth.router import router as auth_router

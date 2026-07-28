@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY", "")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 
 def validate_config():
@@ -15,7 +15,7 @@ def validate_config():
     missing = []
     if not SUPABASE_URL or "your-supabase-project" in SUPABASE_URL:
         missing.append("SUPABASE_URL")
-    if not SUPABASE_ANON_KEY or "your-anon-public-key" in SUPABASE_ANON_KEY:
+    if not SUPABASE_ANON_KEY or any(placeholder in SUPABASE_ANON_KEY for placeholder in ["your-anon-public-key", "your-supabase-anon-key"]):
         missing.append("SUPABASE_ANON_KEY")
     
     if missing:
