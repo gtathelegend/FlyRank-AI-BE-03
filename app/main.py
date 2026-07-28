@@ -412,8 +412,12 @@ def read_public_info():
 @app.get(
     "/protected/profile",
     summary="Get Authenticated User Profile",
-    description="Returns user information retrieved from the validated JWT token.",
-    response_model=UserResponse
+    description=(
+        "Verifies the Bearer token against Supabase Auth and returns safe user "
+        "information (id, email, created_at). Returns 401 for any invalid, "
+        "expired, tampered, or revoked token."
+    ),
+    response_model=UserResponse,
 )
 def read_protected_profile(current_user: UserResponse = Depends(get_current_user)):
     return current_user

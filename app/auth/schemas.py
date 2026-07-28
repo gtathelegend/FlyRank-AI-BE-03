@@ -8,7 +8,8 @@ class UserCredentials(BaseModel):
 class UserResponse(BaseModel):
     id: str = Field(..., description="The unique Supabase user ID (UUID)")
     email: Optional[str] = Field(None, description="The user's email address")
-    user_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Metadata associated with the user")
+    created_at: Optional[str] = Field(None, description="ISO-8601 timestamp of account creation")
+    user_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Safe user-supplied metadata")
 
 class TokenResponse(BaseModel):
     access_token: str = Field(..., description="The JWT access token used for bearer authentication")
