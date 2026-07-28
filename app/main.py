@@ -425,23 +425,19 @@ def read_protected_profile(current_user: UserResponse = Depends(get_current_user
 @app.get(
     "/protected/dashboard",
     summary="Get Authenticated User Dashboard",
-    description="Returns dashboard statistics. Only accessible by authenticated users."
+    description=(
+        "Returns a welcome message and verified user information. "
+        "Requires a valid Bearer token. Protected via the shared "
+        "get_current_user dependency — no authentication logic duplicated here."
+    ),
 )
 def read_protected_dashboard(
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
 ):
-    conn = get_db_connection()
-    try:
-        # Retrieve task statistics from database
-        stats = db_get_stats(conn)
-        return {
-            "user_id": current_user.id,
-            "email": current_user.email,
-            "message": "Welcome to your authenticated dashboard!",
-            "statistics": stats
-        }
-    finally:
-        conn.close()
+    return {
+        "message": "Welcome to your dashboard.",
+        "user": current_user,
+    }
 
 def custom_openapi():
     if app.openapi_schema:

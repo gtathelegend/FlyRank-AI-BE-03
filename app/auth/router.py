@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from .client import SupabaseAuthClient
 from .schemas import UserCredentials, TokenResponse, AuthSuccessResponse, UserResponse
 from .config import validate_config
-from .dependencies import security
+from .dependencies import security, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 auth_client = SupabaseAuthClient()
@@ -85,12 +85,38 @@ async def login(credentials: UserCredentials):
 
 @router.post(
     "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
     summary="User Logout",
-    description="Invalidates the current session token in Supabase."
+    description=(
+        "Invalidates the current session token via Supabase. "
+        "Requires a valid Bearer token — the token is fully verified before "
+        "the session is revoked. Returns 204 No Content on success."
+    ),
 )
-async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    validate_config()
-    
+async def logout(
+    _: UserResponse = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """
+    The get_current_user dependency (via Depends) fully verifies the token
+    against Supabase before this handler runs.  The raw token is then used
+    to perform the actual sign-out HTTP call so we don't mutate the shared
+    SDK session object.
+
+    FastAPI deduplicates the underlying CustomHTTPBearer call automatically,
+    so the Authorization header is parsed exactly once per request.
+    """
     token = credentials.credentials
-    await auth_client.logout(token)
-    return {"message": "Logged out successfully"}
+    try:
+        await auth_client.logout(token)
+    except HTTPException:
+        # Already a well-formed HTTP error — re-raise unchanged.
+        raise
+    except Exception:
+        # Network errors, unexpected SDK failures — never leak internals.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Logout failed. Please try again.",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
