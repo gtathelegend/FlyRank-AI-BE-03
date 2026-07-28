@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials
 from .client import SupabaseAuthClient
 from .schemas import UserCredentials, TokenResponse, AuthSuccessResponse, UserResponse
 from .config import validate_config
+from .dependencies import security
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 auth_client = SupabaseAuthClient()
-security = HTTPBearer()
 
 @router.post(
     "/signup",

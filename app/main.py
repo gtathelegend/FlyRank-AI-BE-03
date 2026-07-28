@@ -1,7 +1,7 @@
 import uvicorn
 import os
 import redis
-from fastapi import FastAPI, Request, Response, Depends
+from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, Field
@@ -9,7 +9,6 @@ from typing import List, Optional
 from .database import init_db, get_db_connection
 from .seed import seed_db
 from .crud import db_get_tasks, db_get_task_by_id, db_get_stats, db_create_task, db_update_task, db_delete_task, db_reset_tasks, db_get_detailed_stats
-from .supabase_client import supabase
 
 # Auth integration imports
 from .auth.router import router as auth_router
@@ -23,6 +22,13 @@ app = FastAPI(
     version="1.0",
     description="A simple, in-memory CRUD API for managing tasks.",
 )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail}
+    )
 
 # Mount the Auth Router
 app.include_router(auth_router)
@@ -400,9 +406,7 @@ def delete_task(task_id: int):
 )
 def read_public_info():
     return {
-        "status": "active",
-        "message": "Welcome to the Task Manager API. Authentication is integrated with Supabase Auth.",
-        "documentation": "/docs"
+        "message": "Welcome stranger! This info is public."
     }
 
 @app.get(
