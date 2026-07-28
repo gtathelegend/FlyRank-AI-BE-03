@@ -31,8 +31,11 @@ async def signup(credentials: UserCredentials):
         
     result = await auth_client.signup(email, password)
     
-    # Parse results
-    user_data = result.get("user", {})
+    # Parse results - handle both nested user and root-level user response formats
+    user_data = result.get("user")
+    if not isinstance(user_data, dict):
+        user_data = result if "id" in result else {}
+
     user = UserResponse(
         id=user_data.get("id"),
         email=user_data.get("email"),
