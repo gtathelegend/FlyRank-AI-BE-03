@@ -271,6 +271,40 @@ Interactive API documentation is available at **http://localhost:8000/docs**.
 
 ---
 
+## AI vs Me
+
+A comparative analysis between the manual production implementation (`app/`) and the isolated AI-generated version (`ai-version/`).
+
+### Comparison Matrix
+
+| Feature / Dimension | Manual Production (`app/`) | AI-Generated Version (`ai-version/`) |
+|---|---|---|
+| **Folder Structure** | Modular (`app/auth/` package separating `dependencies.py`, `router.py`, `schemas.py`, `config.py`, `client.py`) | Flat single file (`ai-version/main.py`) containing inline auth handlers, dependencies, and schemas alongside repository code |
+| **Bearer Header Parsing** | Strict custom helper `_extract_bearer_token()` enforcing exactly 2 parts (`Bearer <token>`) and non-empty token string | Standard HTTPBearer check; relied on standard token split without strict spacing guards initially |
+| **JWT Verification** | Uses official `supabase-py` SDK (`supabase.auth.get_user(token)`) | Uses direct `httpx` HTTP requests (`GET {SUPABASE_URL}/auth/v1/user`) |
+| **Error Handling & Masking** | Global `HTTPException` handler mapping all auth errors cleanly to `{"error": "..."}` without leaking internal traces | Local try/except blocks returning explicit `JSONResponse` objects with `{"error": "..."}` |
+| **Swagger UI Integration** | Custom OpenAPI schema override injecting `securitySchemes` (BearerAuth) and path-level `security` attributes | Similar OpenAPI schema override injecting `securitySchemes` for OpenAPI compliance |
+| **Logout Implementation** | Revokes session via SDK / HTTP API while enforcing prior `get_current_user` token verification | Direct `POST /auth/v1/logout` call using raw HTTP client |
+
+### Key Questions & Findings
+
+1. **How did AI parse the Bearer token?**
+   - The AI version relied on `httpx` headers or standard `HTTPBearer` extraction. In early iterations, AI tends to use standard string splits (`header.split(" ")`) which can fail edge cases like multiple spaces or missing prefixes unless explicitly instructed with regex/strict split logic.
+
+2. **Did AI correctly reject malformed tokens?**
+   - Yes, when configured with `CustomHTTPBearer`, both versions return a `401 Unauthorized` with `{"error": "Access token required"}` for malformed/missing headers and `{"error": "Invalid or expired token"}` for tampered/invalid JWTs.
+
+3. **Did AI expose any security risks?**
+   - In raw unguided prompts, AI often attempts to decode JWTs locally using `pyjwt` without verifying the secret, or attempts to use `service_role` keys. Guided with strict prompts, the AI correctly avoided local JWT decoding and relied entirely on server-side Supabase verification using the `anon` key.
+
+4. **Did AI assume anything that your prompt didn't specify?**
+   - The AI initially assumed the Repository Pattern was desired for the database layer (`repository.py`) and placed all API routes inside a single monolithic `main.py` file rather than organizing routes into FastAPI `APIRouter` modules.
+
+5. **How did the improved prompt change the result?**
+   - The structured, stage-by-stage prompts prevented the AI from adding unnecessary third-party dependencies (like `PyJWT`), ensured strict compliance with the required `{"error": "..."}` JSON error response format, and enforced reusable dependency injection rather than inline verification logic in every endpoint.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
