@@ -20,7 +20,33 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 app = FastAPI(
     title="Task API",
     version="1.0",
-    description="A simple, in-memory CRUD API for managing tasks.",
+    description=(
+        "A task-management REST API with Supabase Auth integration.\n\n"
+        "## Authentication\n\n"
+        "Protected endpoints require a **Bearer JWT** issued by Supabase.\n\n"
+        "**Workflow:**\n"
+        "1. `POST /auth/signup` — create an account\n"
+        "2. `POST /auth/login` — receive an `access_token`\n"
+        "3. Click **Authorize** (top-right) and paste the token\n"
+        "4. Call any 🔒 protected endpoint\n"
+        "5. `POST /auth/logout` — invalidate the session\n\n"
+        "Public endpoints (🔓) work without any token."
+    ),
+    openapi_tags=[
+        {
+            "name": "Authentication",
+            "description": "Signup, login, and logout via Supabase Auth.",
+        },
+        {
+            "name": "Protected",
+            "description": "Endpoints that require a valid Bearer JWT. "
+                           "Click **Authorize** and paste your `access_token` first.",
+        },
+        {
+            "name": "Tasks",
+            "description": "Public CRUD operations on the task list.",
+        },
+    ],
 )
 
 @app.exception_handler(HTTPException)
@@ -411,6 +437,7 @@ def read_public_info():
 
 @app.get(
     "/protected/profile",
+    tags=["Protected"],
     summary="Get Authenticated User Profile",
     description=(
         "Verifies the Bearer token against Supabase Auth and returns safe user "
@@ -418,18 +445,27 @@ def read_public_info():
         "expired, tampered, or revoked token."
     ),
     response_model=UserResponse,
+    responses={
+        200: {"description": "Authenticated user info returned."},
+        401: {"description": "Missing, malformed, expired, or invalid token."},
+    },
 )
 def read_protected_profile(current_user: UserResponse = Depends(get_current_user)):
     return current_user
 
 @app.get(
     "/protected/dashboard",
+    tags=["Protected"],
     summary="Get Authenticated User Dashboard",
     description=(
         "Returns a welcome message and verified user information. "
         "Requires a valid Bearer token. Protected via the shared "
         "get_current_user dependency — no authentication logic duplicated here."
     ),
+    responses={
+        200: {"description": "Dashboard data returned."},
+        401: {"description": "Missing, malformed, expired, or invalid token."},
+    },
 )
 def read_protected_dashboard(
     current_user: UserResponse = Depends(get_current_user),
@@ -442,66 +478,98 @@ def read_protected_dashboard(
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
+
     openapi_schema = get_openapi(
-        title="Task API",
-        version="1.0",
-        description="A simple, in-memory CRUD API for managing tasks.",
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        tags=app.openapi_tags,
         routes=app.routes,
     )
-    if "components" not in openapi_schema:
-        openapi_schema["components"] = {}
-    if "schemas" not in openapi_schema["components"]:
-        openapi_schema["components"]["schemas"] = {}
 
+    # ── Ensure component sections exist ──────────────────────────────────────
+    openapi_schema.setdefault("components", {})
+    openapi_schema["components"].setdefault("schemas", {})
+
+    # ── Stage 5: Declare the HTTPBearer security scheme ───────────────────────
+    # This is the official FastAPI/OpenAPI pattern — no secrets are embedded;
+    # only the scheme type and JWT format hint are declared.
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": (
+                "Paste your Supabase `access_token` here (obtained from "
+                "`POST /auth/login`). Format: `<token>` — do NOT include the "
+                "word 'Bearer'; Swagger adds it automatically."
+            ),
+        }
+    }
+
+    # ── Stamp security requirement onto every protected path/method ───────────
+    # Public routes (/public/info, /tasks/*, /health, /) intentionally omitted.
+    _PROTECTED: dict[str, list[str]] = {
+        "/protected/profile":   ["get"],
+        "/protected/dashboard": ["get"],
+        "/auth/logout":         ["post"],
+    }
+    for path, methods in _PROTECTED.items():
+        if path in openapi_schema["paths"]:
+            for method in methods:
+                if method in openapi_schema["paths"][path]:
+                    openapi_schema["paths"][path][method]["security"] = [
+                        {"BearerAuth": []}
+                    ]
+
+    # ── CRUD request-body schemas (unchanged from previous stages) ────────────
     openapi_schema["components"]["schemas"]["TaskCreateRequest"] = {
         "type": "object",
         "required": ["title"],
         "properties": {
             "title": {
                 "type": "string",
-                "description": "The title of the new task"
+                "description": "The title of the new task",
             }
-        }
+        },
     }
-
     openapi_schema["components"]["schemas"]["TaskUpdateRequest"] = {
         "type": "object",
         "properties": {
             "title": {
                 "type": "string",
-                "description": "The updated title of the task"
+                "description": "The updated title of the task",
             },
             "done": {
                 "type": "boolean",
-                "description": "The updated done status of the task"
-            }
-        }
+                "description": "The updated done status of the task",
+            },
+        },
     }
 
-    if "/tasks" in openapi_schema["paths"]:
-        if "post" in openapi_schema["paths"]["/tasks"]:
-            openapi_schema["paths"]["/tasks"]["post"]["requestBody"] = {
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/TaskCreateRequest"}
-                    }
-                },
-                "required": True
-            }
-
-    if "/tasks/{task_id}" in openapi_schema["paths"]:
-        if "put" in openapi_schema["paths"]["/tasks/{task_id}"]:
-            openapi_schema["paths"]["/tasks/{task_id}"]["put"]["requestBody"] = {
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/TaskUpdateRequest"}
-                    }
-                },
-                "required": True
-            }
+    paths = openapi_schema["paths"]
+    if "/tasks" in paths and "post" in paths["/tasks"]:
+        paths["/tasks"]["post"]["requestBody"] = {
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/TaskCreateRequest"}
+                }
+            },
+            "required": True,
+        }
+    if "/tasks/{task_id}" in paths and "put" in paths["/tasks/{task_id}"]:
+        paths["/tasks/{task_id}"]["put"]["requestBody"] = {
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/TaskUpdateRequest"}
+                }
+            },
+            "required": True,
+        }
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi
 
