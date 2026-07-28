@@ -1,7 +1,7 @@
 import uvicorn
 import os
 import redis
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, Field
@@ -10,6 +10,11 @@ from .database import init_db, get_db_connection
 from .seed import seed_db
 from .crud import db_get_tasks, db_get_task_by_id, db_get_stats, db_create_task, db_update_task, db_delete_task, db_reset_tasks, db_get_detailed_stats
 
+# Auth integration imports
+from .auth.router import router as auth_router
+from .auth.dependencies import get_current_user
+from .auth.schemas import UserResponse
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 app = FastAPI(
@@ -17,6 +22,9 @@ app = FastAPI(
     version="1.0",
     description="A simple, in-memory CRUD API for managing tasks.",
 )
+
+# Mount the Auth Router
+app.include_router(auth_router)
 
 @app.on_event("startup")
 def on_startup():
@@ -381,6 +389,48 @@ def delete_task(task_id: int):
         return Response(status_code=204)
     except Exception:
         return JSONResponse(status_code=400, content={"error": "Failed to delete task"})
+    finally:
+        conn.close()
+
+@app.get(
+    "/public/info",
+    summary="Get Public Information",
+    description="Returns public metadata about the application without authentication."
+)
+def read_public_info():
+    return {
+        "status": "active",
+        "message": "Welcome to the Task Manager API. Authentication is integrated with Supabase Auth.",
+        "documentation": "/docs"
+    }
+
+@app.get(
+    "/protected/profile",
+    summary="Get Authenticated User Profile",
+    description="Returns user information retrieved from the validated JWT token.",
+    response_model=UserResponse
+)
+def read_protected_profile(current_user: UserResponse = Depends(get_current_user)):
+    return current_user
+
+@app.get(
+    "/protected/dashboard",
+    summary="Get Authenticated User Dashboard",
+    description="Returns dashboard statistics. Only accessible by authenticated users."
+)
+def read_protected_dashboard(
+    current_user: UserResponse = Depends(get_current_user)
+):
+    conn = get_db_connection()
+    try:
+        # Retrieve task statistics from database
+        stats = db_get_stats(conn)
+        return {
+            "user_id": current_user.id,
+            "email": current_user.email,
+            "message": "Welcome to your authenticated dashboard!",
+            "statistics": stats
+        }
     finally:
         conn.close()
 
